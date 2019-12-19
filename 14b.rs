@@ -88,7 +88,7 @@ fn read_reaction_vec(s: &str) -> Vec<Reaction> {
 
 #[derive(Debug)]
 struct Material {
-    qty: u32,
+    qty: u64,
     name: String,
 }
 
@@ -98,32 +98,30 @@ struct Reaction {
     output: Material,
 }
 
-fn ceil_div(x: u32, y: u32) -> u32 {
+fn ceil_div(x: u64, y: u64) -> u64 {
     x / y + if x % y != 0 { 1 } else { 0 }
 }
 
-fn calc_ore(reactions: &[Reaction], want_name: &str, want_qty: u32,
-            surplus: &mut HashMap<String, u32>) -> u32 {
+fn calc_ore(reactions: &[Reaction], want_name: &str, want_qty: u64,
+            surplus: &mut HashMap<String, u64>) -> u64 {
     if want_name == "ORE" {
         return want_qty;
     }
     let r = reactions.iter().find(|r| r.output.name == want_name).unwrap();
     let nreactions = ceil_div(want_qty, r.output.qty);
     let mut ore_input = 0;
-    for _ in 0..nreactions {
-        for m in &r.input {
-            let mut qty = m.qty;
-            if let Some(&surplus_qty) = surplus.get(&m.name) {
-                if surplus_qty >= qty {
-                    surplus.insert(m.name.clone(), surplus_qty - qty);
-                    continue;
-                } else {
-                    qty -= surplus_qty;
-                    surplus.remove(&m.name);
-                }
+    for m in &r.input {
+        let mut qty = m.qty * nreactions;
+        if let Some(&surplus_qty) = surplus.get(&m.name) {
+            if surplus_qty >= qty {
+                surplus.insert(m.name.clone(), surplus_qty - qty);
+                continue;
+            } else {
+                qty -= surplus_qty;
+                surplus.remove(&m.name);
             }
-            ore_input += calc_ore(reactions, &m.name, qty, surplus);
         }
+        ore_input += calc_ore(reactions, &m.name, qty, surplus);
     }
     let created_qty = r.output.qty * nreactions;
     assert!(created_qty >= want_qty);
@@ -132,33 +130,28 @@ fn calc_ore(reactions: &[Reaction], want_name: &str, want_qty: u32,
     ore_input
 }
 
-fn calc_interval(reactions: &[Reaction]) -> (u64, u64) {
-    let mut surplus = HashMap::new();
-    let mut used_ore = 0;
-    let mut got_fuel = 0;
-    loop {
-        let ore = calc_ore(reactions, "FUEL", 1, &mut surplus) as u64;
-        used_ore += ore as u64;
-        got_fuel += 1;
-        if surplus.iter().all(|(name, &qty)| name == "FUEL" || qty == 0) {
-            break;
-        }
-    }
-    (used_ore, got_fuel)
-}
+fn calc_total_fuel(reactions: &[Reaction], stored_ore: u64) -> u64 {
+    let mut low_fuel: u64 = 1;
+    let mut high_fuel = None;
 
-fn calc_total_fuel(reactions: &[Reaction], mut stored_ore: u64) -> u64 {
-    let (ore_interval, fuel_per_interval) = calc_interval(reactions);
-    let mut fuel = (stored_ore / ore_interval) * fuel_per_interval;
-    stored_ore %= ore_interval;
-    let mut surplus = HashMap::new();
     loop {
-        let ore = calc_ore(reactions, "FUEL", 1, &mut surplus);
-        if ore as u64 > stored_ore {
-            return fuel;
+        let test_fuel = if let Some(high_fuel) = high_fuel {
+            low_fuel + (high_fuel - low_fuel) / 2
+        } else {
+            low_fuel.checked_mul(2).unwrap()
+        };
+
+        let ore = calc_ore(reactions, "FUEL", test_fuel, &mut HashMap::new());
+        if ore < stored_ore {
+            if Some(low_fuel) == high_fuel || Some(low_fuel + 1) == high_fuel {
+                break test_fuel;
+            }
+            low_fuel = test_fuel;
+        } else if ore > stored_ore {
+            high_fuel = Some(test_fuel);
+        } else {
+            break test_fuel;
         }
-        fuel += 1;
-        stored_ore -= ore as u64;
     }
 }
 
@@ -191,29 +184,28 @@ fn run_tests() {
 1 VJHF, 6 MNCFX => 4 RFSQX
 176 ORE => 6 VJHF", 5586022);
 
-    // takes too long!
-//     test("171 ORE => 8 CNZTR
-// 7 ZLQW, 3 BMBT, 9 XCVML, 26 XMNCP, 1 WPTQ, 2 MZWV, 1 RJRHP => 4 PLWSL
-// 114 ORE => 4 BHXH
-// 14 VRPVC => 6 BMBT
-// 6 BHXH, 18 KTJDG, 12 WPTQ, 7 PLWSL, 31 FHTLT, 37 ZDVW => 1 FUEL
-// 6 WPTQ, 2 BMBT, 8 ZLQW, 18 KTJDG, 1 XMNCP, 6 MZWV, 1 RJRHP => 6 FHTLT
-// 15 XDBXC, 2 LTCX, 1 VRPVC => 6 ZLQW
-// 13 WPTQ, 10 LTCX, 3 RJRHP, 14 XMNCP, 2 MZWV, 1 ZLQW => 1 ZDVW
-// 5 BMBT => 4 WPTQ
-// 189 ORE => 9 KTJDG
-// 1 MZWV, 17 XDBXC, 3 XCVML => 2 XMNCP
-// 12 VRPVC, 27 CNZTR => 2 XDBXC
-// 15 KTJDG, 12 BHXH => 5 XCVML
-// 3 BHXH, 2 VRPVC => 7 MZWV
-// 121 ORE => 7 VRPVC
-// 7 XCVML => 6 RJRHP
-// 5 BHXH, 4 VRPVC => 5 LTCX", 460664);
+    test("171 ORE => 8 CNZTR
+7 ZLQW, 3 BMBT, 9 XCVML, 26 XMNCP, 1 WPTQ, 2 MZWV, 1 RJRHP => 4 PLWSL
+114 ORE => 4 BHXH
+14 VRPVC => 6 BMBT
+6 BHXH, 18 KTJDG, 12 WPTQ, 7 PLWSL, 31 FHTLT, 37 ZDVW => 1 FUEL
+6 WPTQ, 2 BMBT, 8 ZLQW, 18 KTJDG, 1 XMNCP, 6 MZWV, 1 RJRHP => 6 FHTLT
+15 XDBXC, 2 LTCX, 1 VRPVC => 6 ZLQW
+13 WPTQ, 10 LTCX, 3 RJRHP, 14 XMNCP, 2 MZWV, 1 ZLQW => 1 ZDVW
+5 BMBT => 4 WPTQ
+189 ORE => 9 KTJDG
+1 MZWV, 17 XDBXC, 3 XCVML => 2 XMNCP
+12 VRPVC, 27 CNZTR => 2 XDBXC
+15 KTJDG, 12 BHXH => 5 XCVML
+3 BHXH, 2 VRPVC => 7 MZWV
+121 ORE => 7 VRPVC
+7 XCVML => 6 RJRHP
+5 BHXH, 4 VRPVC => 5 LTCX", 460664);
 }
 
 fn main() {
     run_tests();
 
-    //let input = include_str!("14.input");
-    //println!("{:?}", calc_total_fuel(&read_reaction_vec(input), 1_000_000_000_000));
+    let input = include_str!("14.input");
+    println!("{:?}", calc_total_fuel(&read_reaction_vec(input), 1_000_000_000_000));
 }
