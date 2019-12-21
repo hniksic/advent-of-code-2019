@@ -188,9 +188,12 @@ fn find_fewest_steps(program: &[i64]) -> Option<usize> {
         let mut current_pos: (i32, i32) = (0, 0);
         for &old_step in &path {
             in_tx.send(old_step).unwrap();
-            assert_eq!(out_rx.recv().unwrap(), 1);
             current_pos = apply_step(current_pos, old_step);
         }
+        for _ in 0..path.len() {
+            assert_eq!(out_rx.recv().unwrap(), 1);
+        }
+
         for &new_step in &[1, 2, 3, 4] {
             if visited.contains(&apply_step(current_pos, new_step)) {
                 continue;
@@ -214,6 +217,8 @@ fn find_fewest_steps(program: &[i64]) -> Option<usize> {
         }
         for &old_step in path.iter().rev() {
             in_tx.send(reverse_step(old_step)).unwrap();
+        }
+        for _ in 0..path.len() {
             assert_eq!(out_rx.recv().unwrap(), 1);
         }
     }

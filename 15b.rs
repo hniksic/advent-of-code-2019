@@ -186,12 +186,15 @@ fn explore(program: &[i64]) -> (HashMap<(i32, i32), bool>, Option<(i32, i32)>) {
         let mut current_pos: (i32, i32) = (0, 0);
         for &old_step in &path {
             in_tx.send(old_step).unwrap();
+            current_pos = apply_step(current_pos, old_step);
+        }
+        for _ in 0..path.len() {
             match out_rx.recv().unwrap() {
                 1|2 => (),
                 _ => panic!("wrong response")
             }
-            current_pos = apply_step(current_pos, old_step);
         }
+
         for &new_step in &[1, 2, 3, 4] {
             if let Some(_) = map.get(&apply_step(current_pos, new_step)) {
                 continue;
@@ -221,6 +224,8 @@ fn explore(program: &[i64]) -> (HashMap<(i32, i32), bool>, Option<(i32, i32)>) {
         }
         for &old_step in path.iter().rev() {
             in_tx.send(reverse_step(old_step)).unwrap();
+        }
+        for _ in 0..path.len() {
             match out_rx.recv().unwrap() {
                 1|2 => (),
                 _ => panic!("wrong response")
